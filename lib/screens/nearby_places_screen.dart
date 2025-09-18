@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../widgets/place_card.dart';
 import '../data/mock_places.dart';
 import '../screens/home_screen.dart';
+import '../main.dart';
 
 class NearbyPlacesScreen extends StatefulWidget {
   const NearbyPlacesScreen({super.key});
@@ -56,10 +57,11 @@ class _NearbyPlacesScreenState extends State<NearbyPlacesScreen> {
                     'image': 'https://via.placeholder.com/80',
                   },
                   onTap: () {
-                    // Show place details
-                    showModalBottomSheet(
-                      context: context,
-                      builder: (context) => PlaceDetailSheet(place: place),
+                    // Navigate to MainScreen with the map tab active and the selected place
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => MainScreen(initialIndex: 0, initialPlace: place),
+                      ),
                     );
                   },
                 );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'screens/home_screen.dart';
 import 'screens/nearby_places_screen.dart';
 import 'screens/settings_screen.dart';
+import 'data/mock_places.dart';
 
 void main() {
   runApp(const MyApp());
@@ -25,23 +26,36 @@ class MyApp extends StatelessWidget {
 }
 
 class MainScreen extends StatefulWidget {
-  const MainScreen({super.key});
+  final int initialIndex;
+  final MockPlace? initialPlace;
+
+  const MainScreen({super.key, this.initialIndex = 0, this.initialPlace});
 
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
 
 class _MainScreenState extends State<MainScreen> {
-  int _currentIndex = 0;
+  late int _currentIndex;
 
-  final List<Widget> _screens = [
-    const HomeScreen(),
-    const NearbyPlacesScreen(),
-    const SettingsScreen(),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+  }
+
+  List<Widget> _buildScreens() {
+    return [
+      HomeScreen(initialPlace: widget.initialPlace),
+      const NearbyPlacesScreen(),
+      const SettingsScreen(),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
+    final _screens = _buildScreens();
+
     return Scaffold(
       body: _screens[_currentIndex],
       bottomNavigationBar: BottomNavigationBar(

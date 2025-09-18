@@ -5,50 +5,85 @@ import 'package:geolocator/geolocator.dart';
 import '../data/mock_places.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final MockPlace? initialPlace;
+
+  const HomeScreen({super.key, this.initialPlace});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  late MapController mapController;
+  late final MapController mapController;
   LatLng? currentPosition;
   bool isLoading = true;
   List<Marker> placeMarkers = [];
   Marker? selectedMarker;
+  double _zoom = 14;
 
   @override
   void initState() {
     super.initState();
     mapController = MapController();
     _getCurrentLocation();
+
+    if (widget.initialPlace != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _handleExternalPlace(widget.initialPlace!);
+      });
+    }
+  }
+
+  Future<void> _handleExternalPlace(MockPlace place) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    setState(() {
+      selectedMarker = Marker(
+        point: place.location,
+        width: 50,
+        height: 50,
+        child: const Icon(
+          Icons.location_pin,
+          color: Colors.blue,
+          size: 48,
+        ),
+      );
+    });
+
+    try {
+      mapController.move(place.location, 16);
+    } catch (_) {}
+
+    if (mounted) {
+      showModalBottomSheet(
+        context: context,
+        builder: (context) => PlaceDetailSheet(place: place),
+      );
+    }
   }
 
   Future<void> _getCurrentLocation() async {
     try {
-      bool serviceEnabled;
-      LocationPermission permission;
-
-      serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Location services are disabled')),
+            const SnackBar(content: Text('Location services are disabled.')),
           );
         }
+        setState(() => isLoading = false);
         return;
       }
 
-      permission = await Geolocator.checkPermission();
+      LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Location permissions denied')),
+              const SnackBar(content: Text('Location permission denied.')),
             );
           }
+          setState(() => isLoading = false);
           return;
         }
       }
@@ -56,77 +91,76 @@ class _HomeScreenState extends State<HomeScreen> {
       if (permission == LocationPermission.deniedForever) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Location permissions permanently denied'),
-              action: SnackBarAction(
-                label: 'Settings',
-                onPressed: () {
-                  Geolocator.openAppSettings();
-                },
-              ),
-            ),
+            const SnackBar(content: Text('Location permission permanently denied.')),
           );
         }
+        setState(() => isLoading = false);
         return;
       }
 
-      Position position = await Geolocator.getCurrentPosition();
-      if (mounted) {
-        setState(() {
-          currentPosition = LatLng(position.latitude, position.longitude);
-          isLoading = false;
-          _loadNearbyPlaces();
-        });
-      }
+      final pos = await Geolocator.getCurrentPosition();
+      if (!mounted) return;
+
+      currentPosition = LatLng(pos.latitude, pos.longitude);
+      _loadNearbyPlaces();
+      setState(() {
+        isLoading = false;
+      });
+
+      // move map to current location when first obtained
+      try {
+        mapController.move(currentPosition!, _zoom);
+      } catch (_) {}
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error getting location: $e')),
         );
-        setState(() {
-          isLoading = false;
-        });
+        setState(() => isLoading = false);
       }
     }
   }
 
   void _loadNearbyPlaces() {
-    if (currentPosition != null) {
-      final nearbyPlaces = MockPlacesData.getNearbyPlaces(currentPosition!);
-      
-      setState(() {
-        placeMarkers = nearbyPlaces.map((place) {
-          return Marker(
-            point: place.location,
-            child: GestureDetector(
-              onTap: () => _onPlaceMarkerTapped(place),
-              child: Icon(
-                Icons.location_pin,
-                color: Colors.red,
-                size: 40,
-              ),
+    if (currentPosition == null) return;
+    final nearby = MockPlacesData.getNearbyPlaces(currentPosition!);
+    setState(() {
+      placeMarkers = nearby.map((place) {
+        return Marker(
+          width: 50,
+          height: 50,
+          point: place.location,
+          child: GestureDetector(
+            onTap: () => _onPlaceMarkerTapped(place),
+            child: const Icon(
+              Icons.location_on,
+              color: Colors.red,
+              size: 36,
             ),
-          );
-        }).toList();
-      });
-    }
+          ),
+        );
+      }).toList();
+    });
   }
 
   void _onPlaceMarkerTapped(MockPlace place) {
     setState(() {
       selectedMarker = Marker(
         point: place.location,
-        child: Icon(
+        width: 50,
+        height: 50,
+        child: const Icon(
           Icons.location_pin,
           color: Colors.blue,
-          size: 50,
+          size: 48,
         ),
       );
     });
-    
-    mapController.move(place.location, 16);
-    
-    // Show bottom sheet with place details
+
+    try {
+      mapController.move(place.location, 16);
+    } catch (_) {}
+
     showModalBottomSheet(
       context: context,
       builder: (context) => PlaceDetailSheet(place: place),
@@ -137,17 +171,20 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       selectedMarker = Marker(
         point: place.location,
-        child: Icon(
+        width: 50,
+        height: 50,
+        child: const Icon(
           Icons.location_pin,
           color: Colors.blue,
-          size: 50,
+          size: 48,
         ),
       );
     });
-    
-    mapController.move(place.location, 16);
-    
-    // Show bottom sheet with place details
+
+    try {
+      mapController.move(place.location, 16);
+    } catch (_) {}
+
     showModalBottomSheet(
       context: context,
       builder: (context) => PlaceDetailSheet(place: place),
@@ -162,12 +199,13 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.search),
-            onPressed: () {
-              showSearch(
+            onPressed: () async {
+              final delegate = PlaceSearchDelegate(onPlaceSelected: (place) {
+                _handleSearchResult(place);
+              });
+              await showSearch<MockPlace?>(
                 context: context,
-                delegate: PlaceSearchDelegate(
-                  onPlaceSelected: _handleSearchResult,
-                ),
+                delegate: delegate,
               );
             },
           ),
@@ -176,52 +214,35 @@ class _HomeScreenState extends State<HomeScreen> {
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : currentPosition == null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.location_off, size: 64, color: Colors.grey),
-                      const SizedBox(height: 16),
-                      const Text('Unable to get location'),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: () {
-                          setState(() {
-                            isLoading = true;
-                          });
-                          _getCurrentLocation();
-                        },
-                        child: const Text('Retry'),
-                      ),
-                    ],
-                  ),
-                )
+              ? const Center(child: Text('Unable to determine current location'))
               : FlutterMap(
                   mapController: mapController,
                   options: MapOptions(
-                    initialCenter: currentPosition!,
-                    initialZoom: 15,
+                    center: currentPosition,
+                    zoom: _zoom,
                     maxZoom: 18,
+                    onPositionChanged: (pos, _) {
+                      _zoom = pos.zoom ?? _zoom;
+                    },
                   ),
                   children: [
                     TileLayer(
                       urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                       userAgentPackageName: 'com.example.mapapp',
+                      // network tile provider is default; network errors will appear in logs.
+                      // If you frequently run offline, consider an offline tile solution.
                     ),
                     MarkerLayer(
                       markers: [
-                        // Current location marker
-                        Marker(
-                          point: currentPosition!,
-                          child: Icon(
-                            Icons.location_pin,
-                            color: Colors.blue,
-                            size: 40,
+                        // current location marker
+                        if (currentPosition != null)
+                          Marker(
+                            width: 40,
+                            height: 40,
+                            point: currentPosition!,
+                            child: const Icon(Icons.my_location, color: Colors.blue),
                           ),
-                        ),
-                        // Place markers
                         ...placeMarkers,
-                        // Selected marker (if any)
                         if (selectedMarker != null) selectedMarker!,
                       ],
                     ),
@@ -230,10 +251,13 @@ class _HomeScreenState extends State<HomeScreen> {
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           if (currentPosition != null) {
-            mapController.move(currentPosition!, 15);
-            setState(() {
-              selectedMarker = null;
-            });
+            try {
+              mapController.move(currentPosition!, 16);
+            } catch (_) {}
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Current location not available')),
+            );
           }
         },
         child: const Icon(Icons.my_location),
@@ -258,137 +282,101 @@ class PlaceDetailSheet extends StatelessWidget {
         children: [
           Row(
             children: [
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.image, size: 48, color: Colors.white70),
+              ),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      place.name,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    Text(place.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
-                    Text(
-                      '${place.category} • ${place.rating} ★',
-                      style: TextStyle(color: Colors.grey[600]),
-                    ),
+                    Text('${place.category} • ${place.rating} ★'),
+                    const SizedBox(height: 4),
+                    Text(place.address, style: TextStyle(color: Colors.grey[700])),
                   ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '${place.rating}',
-                  style: const TextStyle(
-                    color: Colors.blue,
-                    fontWeight: FontWeight.bold,
-                  ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          Text(
-            place.address,
-            style: TextStyle(color: Colors.grey[700]),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            place.description,
-            style: TextStyle(color: Colors.grey[600]),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Getting directions to ${place.name}'),
-                    duration: const Duration(seconds: 2),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.directions),
-              label: const Text('Get Directions'),
-            ),
-          ),
+          Text(place.description, style: TextStyle(color: Colors.grey[700])),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Close'),
+              ),
+            ],
+          )
         ],
       ),
     );
   }
 }
 
-// Updated search delegate with proper mock data
-class PlaceSearchDelegate extends SearchDelegate<MockPlace> {
+// Search delegate
+class PlaceSearchDelegate extends SearchDelegate<MockPlace?> {
   final Function(MockPlace) onPlaceSelected;
-  
+
   PlaceSearchDelegate({required this.onPlaceSelected});
 
   @override
-  List<Widget> buildActions(BuildContext context) {
+  List<Widget>? buildActions(BuildContext context) {
     return [
-      IconButton(
-        icon: const Icon(Icons.clear),
-        onPressed: () {
-          query = '';
-        },
-      ),
+      IconButton(icon: const Icon(Icons.clear), onPressed: () => query = ''),
     ];
   }
 
   @override
-  Widget buildLeading(BuildContext context) {
-    return IconButton(
-      icon: const Icon(Icons.arrow_back),
-      onPressed: () {
-        close(context, MockPlace(
-          id: '',
-          name: '',
-          category: '',
-          rating: 0,
-          location: LatLng(0, 0),
-          address: '',
-          description: '',
-        ));
+  Widget? buildLeading(BuildContext context) {
+    return IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => close(context, null));
+  }
+
+  @override
+  Widget buildResults(BuildContext context) {
+    final results = MockPlacesData.searchPlaces(query);
+    if (results.isEmpty) {
+      return const Center(child: Text('No results'));
+    }
+    return ListView.builder(
+      itemCount: results.length,
+      itemBuilder: (context, index) {
+        final p = results[index];
+        return ListTile(
+          title: Text(p.name),
+          subtitle: Text('${p.category} • ${p.rating} ★'),
+          onTap: () {
+            onPlaceSelected(p);
+            close(context, p);
+          },
+        );
       },
     );
   }
 
   @override
-  Widget buildResults(BuildContext context) {
-    return _buildSearchResults(context);
-  }
-
-  @override
   Widget buildSuggestions(BuildContext context) {
-    return _buildSearchResults(context);
-  }
-
-  Widget _buildSearchResults(BuildContext context) {
-    final results = MockPlacesData.searchPlaces(query);
-
+    final suggestions = query.isEmpty ? MockPlacesData.places : MockPlacesData.searchPlaces(query);
     return ListView.builder(
-      itemCount: results.length,
+      itemCount: suggestions.length,
       itemBuilder: (context, index) {
-        final place = results[index];
+        final p = suggestions[index];
         return ListTile(
-          leading: CircleAvatar(
-            backgroundColor: Colors.blue.withOpacity(0.1),
-            child: const Icon(Icons.place, color: Colors.blue),
-          ),
-          title: Text(place.name),
-          subtitle: Text('${place.category} • ${place.rating} ★'),
+          title: Text(p.name),
+          subtitle: Text(p.category),
           onTap: () {
-            onPlaceSelected(place);
-            close(context, place);
+            query = p.name;
+            showResults(context);
           },
         );
       },
